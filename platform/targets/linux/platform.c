@@ -27,7 +27,9 @@
 
 #include <interfaces/platform.h>
 #include <interfaces/gpio.h>
+#include <interfaces/nvmem.h>
 #include <stdio.h>
+
 #include "emulator.h"
 
 hwInfo_t hwInfo;
@@ -39,6 +41,8 @@ void platform_init()
     snprintf(hwInfo.name, 10, "Linux");
     hwInfo.vhf_band = 1;
     hwInfo.uhf_band = 1;
+
+    nvm_init();
 
     emulator_start();
 }

@@ -40,12 +40,16 @@
 #include <stdarg.h>
 #include <interfaces/display.h>
 #include <interfaces/graphics.h>
+#include <interfaces/nvmem.h>
+#include <utf8.h>
 
 // Variable swap macro
 #define SWAP(x, y) do { typeof(x) t = x; x = y; y = t; } while(0)
 #define DEG_RAD  0.017453292519943295769236907684886
 #define SIN(x) sinf((x) * DEG_RAD)
 #define COS(x) cosf((x) * DEG_RAD)
+
+#define RAS_BYTE(nbit) (((nbit) + 7) >> 3)
 
 #ifdef PIX_FMT_RGB565
 /* This specialization is meant for an RGB565 little endian pixel format.
@@ -106,6 +110,9 @@ bool initialized = 0;
 PIXEL_T *buf;
 uint16_t fbSize;
 char text[32];
+Font* fontList[MAX_UNICODE_FONT_ID];
+
+void gfx_loadFont(uint32_t address);
 
 void gfx_init()
 {
@@ -124,6 +131,8 @@ void gfx_init()
 #endif
     // Clear text buffer
     memset(text, 0x00, 32);
+
+    gfx_loadFont(0x0);
 }
 
 void gfx_terminate()
@@ -771,4 +780,253 @@ void gfx_drawGPScompass(point_t start,
     // North indicator
     point_t n_pos = {start.x + radius - 3, start.y + 7};
     gfx_print(n_pos, FONT_SIZE_6PT, TEXT_ALIGN_LEFT, white, "N");
+}
+
+
+void _addFont(uint8_t fontId, Font *font)
+{
+    if(fontList[fontId] == NULL) {
+        fontList[fontId] = font;
+    }
+    else {
+        Font* p = fontList[fontId];
+        while(p->next) {
+            p = p->next;
+        }
+        font->next = NULL;
+        p->next = font;
+    }
+}
+
+void gfx_loadFont(uint32_t address)
+{
+    memset(fontList, 0, sizeof(fontList));
+
+    uint32_t addressPoint = address;
+
+    while(1) {
+        FontCommonHeader fontHeader;
+        nvm_readData(addressPoint, &fontHeader, sizeof(fontHeader));
+
+        if(memcmp(fontHeader.magic, "ORTXFONT", 8) ==0) {
+            if(fontHeader.fontId > MAX_UNICODE_FONT_ID) {
+                printf("unsupport fontId %d\n", fontHeader.fontId);
+            }
+
+            if(fontHeader.fontType == FONT_TYPE_NORMAL) {
+                NormalFont* newFont = (NormalFont*)malloc(sizeof(NormalFont));
+
+                memcpy(&newFont->font, &fontHeader, sizeof(fontHeader));
+
+                newFont->codeTableAddress = addressPoint + sizeof(NormalFontFileHeader);
+                newFont->baseAddress = addressPoint + sizeof(NormalFontFileHeader) + (fontHeader.lastCode - fontHeader.firstCode + 1) * 4;
+
+                _addFont(fontHeader.fontId, (Font*)newFont);
+            }
+            else if(fontHeader.fontType == FONT_TYPE_BLOCK) {
+                BlockFont* newFont = (BlockFont*)malloc(sizeof(BlockFont));
+
+                BlockFontFileHeader blockHeader;
+                nvm_readData(addressPoint, &blockHeader, sizeof(blockHeader));
+                memcpy(&newFont->font.common, &blockHeader.common, sizeof(blockHeader.common));
+                memcpy(&newFont->glyphInfo, &blockHeader.glyphInfo, sizeof(blockHeader.glyphInfo));
+
+                newFont->baseAddress = addressPoint + sizeof(BlockFontFileHeader);
+
+                _addFont(fontHeader.fontId, (Font*)newFont);
+            }
+            addressPoint += fontHeader.fileSize;
+        }
+        else {
+            break;
+        }
+    }
+
+    int i;
+    for(i=0; i<MAX_UNICODE_FONT_ID; i++) {
+        if(fontList[i] == NULL) {
+            printf("id: %d NULL\n", i);
+        }
+        else {
+            printf("id: %d ", i);
+            Font *p = fontList[i];
+            while(p) {
+                printf("[%x-%x],", p->common.firstCode, p->common.lastCode);
+                p = p->next;
+            }
+            printf("\n");
+        }
+    }
+    
+    // char* text = "宋飞";
+    // int length = strlen(text);
+    // for(int i=0; i<length; i++) {
+    //     printf("%x ", (uint8_t)text[i]);
+    // }
+    // int32_t result[200];
+    // size_t count = utf8_decode(text, result, 200);
+    // printf("convert %ld char\n", count);
+    // for(size_t i=0; i<count; i++) {
+    //     printf("data %d\n", result[i]);
+    // }
+
+    point_t point;
+    color_t color;
+    gfx_drawUTF8Text(point, 1, color, "宋飞");
+
+}
+
+Glyph* gfx_getUnicodeFontGlyph(Font* font, uint32_t c) {
+    Glyph* glyph = NULL;
+
+    while(font) {
+        if(c >= font->common.firstCode && c <= font->common.lastCode) {
+            if(font->common.fontType == FONT_TYPE_BLOCK) {
+                BlockFont* blockFont = (BlockFont*)font;
+
+                int size = RAS_BYTE(blockFont->glyphInfo.width) * blockFont->glyphInfo.height;
+
+                glyph = (Glyph*)malloc(sizeof(Glyph) + size);
+                memcpy(&glyph->info, &blockFont->glyphInfo, sizeof(glyph->info));
+
+                uint32_t glyphAddress = blockFont->baseAddress + (c - font->common.firstCode) * size;
+                nvm_readData(glyphAddress, glyph->bitmap, size);
+            }
+            break;
+        }
+        font = font->next;
+    }
+
+    return glyph;
+}
+
+
+
+point_t gfx_drawUnicodeText(point_t start, uint8_t fontId, color_t color, uint32_t *buf, size_t len) 
+{
+    Font* font = fontList[fontId];
+
+    uint8_t xAdvance = 0;
+
+    if(font == NULL) {
+        return start;
+    }
+
+    for(unsigned i = 0; i < len; i++)
+    {
+        uint32_t c = buf[i];
+        Glyph* glyph = gfx_getUnicodeFontGlyph(font, c);
+
+        int size = RAS_BYTE(glyph->info.width) * glyph->info.height;
+
+        for(int i=0; i<size; i++) {
+            printf("%02x ", glyph->bitmap[i]);
+        }
+
+        int byteLen = RAS_BYTE(glyph->info.width);
+
+        for(int y=0; y<glyph->info.height; y++) {
+            for(int x=0; x<byteLen; x++) {
+                uint8_t byte = glyph->bitmap[x + y*byteLen];
+
+                for(int i=0; i<8; i++) {
+                    if(byte & 0x80) {
+                        printf("X ");
+                        point_t pos = {start.x + xAdvance + (x * 8) +i, start.y + y};
+                        gfx_setPixel(pos, color);
+                    }
+                    else {
+                        printf("  ");
+                    }
+                    byte = byte << 1;
+                }
+            }
+            printf("\n");
+        }
+
+        xAdvance += glyph->info.xAdvance;
+
+        printf("-------------------------------------------------\n");
+
+        
+
+
+    //     GFXglyph glyph = f.glyph[c - f.first];
+    //     uint8_t *bitmap = f.bitmap;
+
+    //     uint16_t bo = glyph.bitmapOffset;
+    //     uint8_t w = glyph.width, h = glyph.height;
+    //     int8_t xo = glyph.xOffset,
+    //            yo = glyph.yOffset;
+    //     uint8_t xx, yy, bits = 0, bit = 0;
+    //     line_h = h;
+
+    //     // Handle newline and carriage return
+    //     if (c == '\n')
+    //     {
+    //       start.x = reset_x;
+    //       start.y += f.yAdvance;
+    //       continue;
+    //     }
+    //     else if (c == '\r')
+    //     {
+    //       start.x = reset_x;
+    //       continue;
+    //     }
+
+    //     // Handle wrap around
+    //     if (start.x + glyph.xAdvance > SCREEN_WIDTH)
+    //     {
+    //         // Compute size of the first row in pixels
+    //         line_size = get_line_size(f, buf, len);
+    //         start.x = reset_x = get_reset_x(alignment, line_size, start.x);
+    //         start.y += f.yAdvance;
+    //     }
+
+    //     // Draw bitmap
+    //     for (yy = 0; yy < h; yy++)
+    //     {
+    //         for (xx = 0; xx < w; xx++)
+    //         {
+    //             if (!(bit++ & 7))
+    //             {
+    //                 bits = bitmap[bo++];
+    //             }
+
+    //             if (bits & 0x80)
+    //             {
+    //                 if (start.y + yo + yy < SCREEN_HEIGHT &&
+    //                     start.x + xo + xx < SCREEN_WIDTH &&
+    //                     start.y + yo + yy > 0 &&
+    //                     start.x + xo + xx > 0)
+    //                 {
+    //                     point_t pos = {start.x + xo + xx, start.y + yo + yy};
+    //                     gfx_setPixel(pos, color);
+
+    //                 }
+    //             }
+
+    //             bits <<= 1;
+    //         }
+    //     }
+
+    //     start.x += glyph.xAdvance;
+    }
+    // // Calculate text size
+    // point_t text_size = {0, 0};
+    // text_size.x = line_size;
+    // text_size.y = (saved_start_y - start.y) + line_h;
+    // return text_size;
+}
+
+point_t gfx_drawUTF8Text(point_t start, uint8_t fontId, color_t color, char* text) {
+    int length = strlen(text);
+    int32_t *result = (int32_t*)malloc(length);
+    size_t count = utf8_decode(text, result, length);
+    printf("convert %ld char\n", count);
+    for(size_t i=0; i<count; i++) {
+        printf("data %d\n", result[i]);
+    }
+    gfx_drawUnicodeText(start, fontId, color, result, count);
+    free(result);
 }

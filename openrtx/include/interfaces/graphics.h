@@ -45,6 +45,8 @@
 #include <FreeSans18pt7b.h>
 #include <FreeSans24pt7b.h>
 
+#include <unicode_font.h>
+
 /**
  * Standard high-level graphic interface for all display types.
  * This interface is based on the lower level interface display.h
@@ -124,6 +126,10 @@ static GFXfont const fonts[] = { TomThumb,           // 5pt
                                  FreeSans16pt7b,     // 16pt
                                  FreeSans18pt7b,     // 16pt
                                  FreeSans24pt7b };   // 24pt
+
+
+#define MAX_UNICODE_FONT_ID 16
+
 
 /**
  * This function calls the correspondent method of the low level interface display.h
@@ -332,5 +338,8 @@ void gfx_drawGPSgraph(point_t start, uint16_t width, uint16_t height, sat_t *sat
  * @param active: whether the needle is to be drawn or not
  */
 void gfx_drawGPScompass(point_t start, uint16_t radius, float deg, bool active);
+
+point_t gfx_drawUTF8Text(point_t start, uint8_t fontId, color_t color, char* text);
+point_t gfx_drawUnicodeText(point_t start, uint8_t fontId, color_t color, uint32_t *buf, size_t len);
 
 #endif /* GRAPHICS_H */

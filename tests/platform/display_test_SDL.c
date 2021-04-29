@@ -36,6 +36,8 @@
  */
 
 #include <interfaces/display.h>
+#include <interfaces/graphics.h>
+#include <interfaces/nvmem.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -60,17 +62,39 @@ void drawRect(int x, int y, int width, int height, uint16_t color)
 
 int main()
 {
-    display_init();
-    display_setBacklightLevel(254);
+    nvm_init();
+    gfx_init();
+    //display_setBacklightLevel(254);
 
-    /* Horizontal red line */
-    drawRect(0, 10, SCREEN_WIDTH, 20, 0xF800);
+    // /* Horizontal red line */
+    // drawRect(0, 10, SCREEN_WIDTH, 20, 0xF800);
 
-    /* Vertical blue line */
-    drawRect(10, 0, 20, SCREEN_HEIGHT, 0x001F);
+    // /* Vertical blue line */
+    // drawRect(10, 0, 20, SCREEN_HEIGHT, 0x001F);
 
-    /* Vertical green line */
-    drawRect(80, 0, 20, SCREEN_HEIGHT, 0x07e0);
+    // /* Vertical green line */
+    // drawRect(80, 0, 20, SCREEN_HEIGHT, 0x07e0);
+
+    point_t center = {10, 10};
+    point_t center2 = {10, 30};
+    point_t center3 = {10, 50};
+    point_t center4 = {10,70};
+    point_t center5 = {10, 90};
+    point_t center6 = {10, 110};
+    color_t red =    {0, 0,   0  , 255};
+
+    //gfx_drawCircle(center, 30, red);
+
+    // gfx_print(center, FONT_SIZE_9PT, TEXT_ALIGN_LEFT, red, "hellow, world!");
+
+    gfx_drawUTF8Text(center, 1, red, "红稣手黄藤酒");
+    gfx_drawUTF8Text(center2, 1, red, "满城春色宫墙柳");
+    gfx_drawUTF8Text(center3, 1, red, "东风恶欢情薄");
+    gfx_drawUTF8Text(center4, 1, red, "一怀愁绪");
+    gfx_drawUTF8Text(center5, 1, red, "几年离索");
+    gfx_drawUTF8Text(center6, 1, red, "错错错");
+
+
 
     /*
      * Use SDL event listener to check if window close button has been pressed,

@@ -30,6 +30,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <interfaces/nvmem.h>
 
 // Simulate CPS with 16 channels, 16 zones, 16 contacts
@@ -38,8 +39,21 @@ const uint32_t maxNumChannels = 16;
 const uint32_t maxNumContacts = 16;
 const freq_t dummy_base_freq = 145500000;
 
+uint8_t *spiFlashMemory;
+
 void nvm_init()
 {
+    spiFlashMemory = (uint8_t *)malloc(16 * 1024 * 1024);
+
+    FILE *fp = fopen("ortxfont.bin", "rb");
+    if(fp) 
+    {
+        fread(spiFlashMemory, 1024 * 1024, 1, fp);
+        printf("load spi flash file success! \n");
+    }
+    else {
+        printf("load spi flash file fail! \n");
+    }
 }
 
 void nvm_terminate()
@@ -107,3 +121,6 @@ int nvm_writeSettings(settings_t *settings)
     return -1; 
 }
 
+int nvm_readData(uint32_t address, void* buf, size_t size) {
+    memcpy(buf, spiFlashMemory + address, size);
+}

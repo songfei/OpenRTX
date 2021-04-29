@@ -116,4 +116,6 @@ int nvm_readSettings(settings_t *settings);
  */
 int nvm_writeSettings(settings_t *settings);
 
+int nvm_readData(uint32_t address, void* buf, size_t size);
+
 #endif /* NVMEM_H */

@@ -37,6 +37,7 @@ openrtx_inc = ['openrtx/include',
                'platform/drivers/baseband',
                'platform/drivers/backlight',
                'platform/drivers/chSelector',
+               'openrtx/include/fonts',
                'openrtx/include/fonts/adafruit']
 
 # Add to sources either the main executable or a platform test
@@ -49,6 +50,10 @@ endif
 ##
 ## External libraries
 ##
+
+# utf8 decode
+utf8_src = ['lib/utf8/utf8.c']
+utf8_inc = ['lib/utf8/include']
 
 # minmea, a lightweight GPS NMEA 0183 parser library
 minmea_src = ['lib/minmea/minmea.c']
@@ -67,8 +72,8 @@ rtos_inc = ['lib/miosix-kernel',
             'lib/miosix-kernel/config/arch/cortexM4_stm32f4/M4_openrtx']
 
 
-src = openrtx_src + minmea_src
-inc = openrtx_inc + rtos_inc + minmea_inc + qdec_inc
+src = openrtx_src + minmea_src + utf8_src
+inc = openrtx_inc + rtos_inc + minmea_inc + qdec_inc + utf8_inc
 def = {'DONT_USE_CMSIS_INIT': ''}
 
 ## Add git commit or tag to print in OpenRTX
